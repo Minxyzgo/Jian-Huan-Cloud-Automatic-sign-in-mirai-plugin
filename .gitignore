@@ -4,3 +4,9 @@
 /.idea/
 /test/
 /out/
+/logs/
+/plugins/
+/bots/
+/data/
+/config/
+/cache/

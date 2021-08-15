@@ -1,2 +1,1 @@
-# mirai-console-example-plugin
-Example plugin for mirai-console
+仅供学习参考使用

@@ -1,19 +1,7 @@
 plugins {
-    val kotlinVersion = "1.4.20"
+    val kotlinVersion = "1.5.10"
     kotlin("jvm") version kotlinVersion
     kotlin("plugin.serialization") version kotlinVersion
-
-    id("net.mamoe.mirai-console") version "2.0-RC" // mirai-console version
-}
-
-mirai {
-    coreVersion = "2.0-RC" // mirai-core version
-
-    publishing {
-        repo = "mirai"
-        packageName = "mirai-console-example-plugin"
-        override = true
-    }
 }
 
 kotlin.sourceSets.all { languageSettings.useExperimentalAnnotation("kotlin.RequiresOptIn") }
@@ -25,4 +13,10 @@ repositories {
     mavenLocal()
     jcenter()
     mavenCentral()
+}
+
+dependencies {
+    implementation("net.mamoe:mirai-core:2.7-RC")
+    implementation("net.mamoe:mirai-console:2.7-RC")
+    implementation("net.mamoe:mirai-console-terminal:2.7-RC")
 }

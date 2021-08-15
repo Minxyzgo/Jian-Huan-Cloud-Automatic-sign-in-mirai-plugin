@@ -2,171 +2,157 @@
 
 package org.example.my.plugin
 
-import kotlinx.serialization.Serializable
-import net.mamoe.mirai.Bot
-import net.mamoe.mirai.console.command.CommandManager.INSTANCE.register
-import net.mamoe.mirai.console.command.CommandManager.INSTANCE.unregister
-import net.mamoe.mirai.console.command.CommandSender
-import net.mamoe.mirai.console.command.CompositeCommand
-import net.mamoe.mirai.console.command.ConsoleCommandSender
-import net.mamoe.mirai.console.command.SimpleCommand
-import net.mamoe.mirai.console.data.AutoSavePluginData
-import net.mamoe.mirai.console.data.PluginDataExtensions.mapKeys
-import net.mamoe.mirai.console.data.PluginDataExtensions.withEmptyDefault
-import net.mamoe.mirai.console.data.ReadOnlyPluginConfig
-import net.mamoe.mirai.console.data.ValueDescription
-import net.mamoe.mirai.console.data.value
-import net.mamoe.mirai.console.permission.PermissionService
-import net.mamoe.mirai.console.permission.PermissionService.Companion.hasPermission
-import net.mamoe.mirai.console.plugin.jvm.JvmPluginDescription
-import net.mamoe.mirai.console.plugin.jvm.KotlinPlugin
-import net.mamoe.mirai.console.util.ConsoleExperimentalApi
-import net.mamoe.mirai.console.util.scopeWith
-import net.mamoe.mirai.contact.Member
-import net.mamoe.mirai.message.data.Image
-import net.mamoe.mirai.utils.info
-
-/*
-// 定义主类方法 1, 显式提供信息
-
-object MyPluginMain2: KotlinPlugin(
-    JvmPluginDescription(
-        "org.example.my-plugin",
-        "1.0"
-    )
-)
-*/
-
-// 定义主类方法 2, 使用 `JvmPluginDescription.loadFromResource()` 从 resources/plugin.yml 加载
+import kotlinx.coroutines.*
+import net.mamoe.mirai.*
+import net.mamoe.mirai.console.plugin.jvm.*
+import net.mamoe.mirai.console.util.*
+import net.mamoe.mirai.contact.*
+import net.mamoe.mirai.event.*
+import net.mamoe.mirai.event.events.*
+import net.mamoe.mirai.message.data.*
+import java.time.*
+import java.util.*
 
 object MyPluginMain : KotlinPlugin(
     @OptIn(ConsoleExperimentalApi::class)
     JvmPluginDescription.loadFromResource()
 ) {
-    val PERMISSION_EXECUTE_1 by lazy {
-        PermissionService.INSTANCE.register(permissionId("execute1"), "注册权限的示例")
-    }
+    val delayMillis = Duration.ofMinutes(3 * 60 + 1).toMillis()
+    val signInGroup = 826900096L
+    val masterId = 1225327866L
+    var job: Job? = null
+    val passwd = "123456"
+    val bot: Bot
+        get() = Bot.instances.first()
+    var lastMap: Map<String, Any>? = null
+    var enable = false
+    var totalIntegral = 0
+    var totalDiamond = 0
 
     override fun onEnable() {
-        MySetting.reload() // 从数据库自动读取配置实例
-        MyPluginData.reload()
+        this.globalEventChannel().subscribeAlways<GroupMessageEvent> {
+            if(message.size > 2 && message[1] is At && sender.id.let { it == 3542343807L || it == masterId }) {
+                val at0 = message[1] as At
+                val text = message[2].content.trim()
+                println("get")
+                if(at0.target == bot.id && text.startsWith("获得")) {
+                    val message = text.removePrefix("获得").removeSuffix("\uD83D\uDC8E")
+                    val all = message.split("\uD83C\uDF55")
+                    totalIntegral += all.first().toInt()
+                    totalDiamond += all[1].toInt()
+                    return@subscribeAlways
+                }
+            }
+            if(sender.id != masterId) return@subscribeAlways
+            this.message.forEach {
+                if(it is PlainText) {
+                    when(it.content.trim()) {
+                        ".启用" -> {
+                            if(enable) group.sendMessage("已启用")
+                            else firstLogin(group)
+                        }
 
-        logger.info { "Hi: ${MySetting.name}" } // 输出一条日志.
-        logger.info("Hi: ${MySetting.name}") // 输出一条日志. 与上面一条相同, 但更推荐上面一条.
-        logger.verbose("Hi: ${MySetting.name}") // 多种日志级别可选
+                        ".禁用" -> {
+                            if(enable) {
+                                job!!.cancel()
+                                lastMap = null
+                                enable = false
+                                totalDiamond = 0
+                                totalIntegral = 0
+                                group.sendMessage("👌")
+                            } else {
+                                group.sendMessage("未启用")
+                            }
+                        }
 
-        // 请不要使用 println, System.out.println 等标准输出方式. 请总是使用 logger.
+                        ".当前语句" -> {
+                            if(enable) {
+                                group.sendMessage(lastMap?.get("signInMessage")?.toString() ?: "没有找到语句")
+                            } else {
+                                group.sendMessage("未启用")
+                            }
+                        }
 
-        MySimpleCommand.register() // 注册指令
+                        ".下次时间" -> {
+                            if(enable) {
+                                val nowTime = Date().time
+                                val lastSignTime = lastMap!!["lastSignTime"] as Date
+                                val next = Duration.ofHours(3).toMillis() - (nowTime - lastSignTime.time)
+                                group.sendMessage("还剩${Duration.ofMillis(next).toMinutes()}分钟")
+                            } else {
+                                group.sendMessage("未启用")
+                            }
+                        }
 
-        PERMISSION_EXECUTE_1 // 初始化, 注册权限
+                        ".刷新" -> {
+                            if(enable) {
+                                lastMap = NetWork.newRequest(bot.id, passwd)
+                                group.sendMessage("👌")
+                            } else {
+                                group.sendMessage("未启用")
+                            }
+                        }
+
+                        ".当前积分" -> {
+                            if(enable) {
+                                val integral = lastMap!!["integral"]!! as Int
+                                val diamond = lastMap!!["diamond"]!! as Int
+                                group.sendMessage("$integral\uD83C\uDF55$diamond\uD83D\uDC8E")
+                            } else {
+                                group.sendMessage("未启用")
+                            }
+                        }
+
+                        ".累计获得" -> {
+                            if(enable) {
+                                group.sendMessage("$totalIntegral\uD83C\uDF55$totalDiamond\uD83D\uDC8E")
+                            } else {
+                                group.sendMessage("未启用")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    override fun onDisable() {
-        MySimpleCommand.unregister() // 取消注册指令
-    }
-}
+    suspend fun firstLogin(group: Group) {
+        val map = NetWork.newRequest(bot.id, passwd)
+        val nowTime = Date().time
+        val lastSignTime = map["lastSignTime"] as Date
+        val next = Duration.ofHours(3).toMillis() - (nowTime - lastSignTime.time)
+        group.sendMessage("""
+            启用自动签到成功!
+            上一次签到时间: ${NetWork.dataFormat.format(map["lastSignTime"])}
+            距离下一次可签到时间还剩: ${Duration.ofMillis(next).toMinutes()}分
+            本次签到语句: ${map["signInMessage"]}
+        """.trimIndent())
+        lastMap = map
+        enable = true
+        val _signInGroup = bot.getGroup(signInGroup)!!
 
-// 定义插件数据
-// 插件
-object MyPluginData : AutoSavePluginData("name") { // "name" 是保存的文件名 (不带后缀)
-    var list: MutableList<String> by value(mutableListOf("a", "b")) // mutableListOf("a", "b") 是初始值, 可以省略
-    var long: Long by value(0L) // 允许 var
-    var int by value(0) // 可以使用类型推断, 但更推荐使用 `var long: Long by value(0)` 这种定义方式.
+        if(next <= 0) {
+            job = launch {
+                _signInGroup.sendMessage(map["signInMessage"]!!.toString())
 
-
-    // 带默认值的非空 map.
-    // notnullMap[1] 的返回值总是非 null 的 MutableMap<Int, String>
-    var notnullMap
-            by value<MutableMap<Int, MutableMap<Int, String>>>().withEmptyDefault()
-
-    // 可将 MutableMap<Long, Long> 映射到 MutableMap<Bot, Long>.
-    val botToLongMap: MutableMap<Bot, Long> by value<MutableMap<Long, Long>>().mapKeys(Bot::getInstance, Bot::id)
-}
-
-// 定义一个配置. 所有属性都会被追踪修改, 并自动保存.
-// 配置是插件与用户交互的接口, 但不能用来保存插件的数据.
-object MySetting : ReadOnlyPluginConfig("MySetting") { // "MySetting" 是保存的文件名 (不带后缀)
-    val name by value("test")
-
-    @ValueDescription("数量") // 注释, 将会保存在 MySetting.yml 文件中.
-    val count by value(0)
-
-    val nested by value<MyNestedData>() // 嵌套类型是支持的
-}
-
-@Serializable
-data class MyNestedData(
-    val list: List<String> = listOf()
-)
-
-// 简单指令
-object MySimpleCommand : SimpleCommand(
-    MyPluginMain, "foo",
-    description = "示例指令"
-) {
-    // 会自动创建一个 ID 为 "org.example.example-plugin:command.foo" 的权限.
-
-
-    // 通过 /foo 调用, 参数自动解析
-    @Handler
-    suspend fun CommandSender.handle(int: Int, str: String) { // 函数名随意, 但参数需要按顺序放置.
-
-        if (this.hasPermission(MyPluginMain.PERMISSION_EXECUTE_1)) {
-            sendMessage("你有 ${MyPluginMain.PERMISSION_EXECUTE_1.id} 权限.")
+                while(true) {
+                    delay(delayMillis)
+                    lastMap = NetWork.newRequest(bot.id, passwd)
+                    _signInGroup.sendMessage(lastMap!!["signInMessage"]!!.toString())
+                }
+            }
         } else {
-            sendMessage(
-                """
-                你没有 ${MyPluginMain.PERMISSION_EXECUTE_1.id} 权限.
-                可以在控制台使用 /permission 管理权限.
-            """.trimIndent()
-            )
+            println("next: $next")
+            job = launch {
+                delay(next)
+                lastMap = NetWork.newRequest(bot.id, passwd)
+                _signInGroup.sendMessage(lastMap!!["signInMessage"]!!.toString())
+                while(true) {
+                    delay(delayMillis)
+                    lastMap = NetWork.newRequest(bot.id, passwd)
+                    _signInGroup.sendMessage(lastMap!!["signInMessage"]!!.toString())
+                }
+            }
         }
-
-        sendMessage("/foo 的第一个参数是 $int, 第二个是 $str")
-    }
-}
-
-// 复合指令
-object MyCompositeCommand : CompositeCommand(
-    MyPluginMain, "manage",
-    description = "示例指令",
-    // prefixOptional = true // 还有更多参数可填, 此处忽略
-) {
-    // 会自动创建一个 ID 为 "org.example.example-plugin:command.manage" 的权限.
-
-    // [参数智能解析]
-    //
-    // 在控制台执行 "/manage <群号>.<群员> <持续时间>",
-    // 或在聊天群内发送 "/manage <@一个群员> <持续时间>",
-    // 或在聊天群内发送 "/manage <目标群员的群名> <持续时间>",
-    // 或在聊天群内发送 "/manage <目标群员的账号> <持续时间>"
-    // 时调用这个函数
-    @SubCommand
-    suspend fun CommandSender.mute(target: Member, duration: Int) { // 通过 /manage mute <target> <duration> 调用
-        sendMessage("/manage mute 被调用了, 参数为: $target, $duration")
-
-        val result = kotlin.runCatching {
-            target.mute(duration).toString()
-        }.getOrElse {
-            it.stackTraceToString()
-        } // 失败时返回堆栈信息
-
-
-        // 表示对 this 和 ConsoleCommandSender 一起操作
-        this.scopeWith(ConsoleCommandSender) {
-            sendMessage("结果: $result") // 同时发送给 this@CommandSender 和 ConsoleCommandSender
-        }
-    }
-
-    @SubCommand
-    suspend fun CommandSender.list() { // 执行 "/manage list" 时调用这个函数
-        sendMessage("/manage list 被调用了")
-    }
-
-    // 支持 Image 类型, 需在聊天中执行此指令.
-    @SubCommand
-    suspend fun CommandSender.test(image: Image) { // 执行 "/manage test <一张图片>" 时调用这个函数
-        sendMessage("/manage image 被调用了, 图片是 ${image.imageId}")
     }
 }
